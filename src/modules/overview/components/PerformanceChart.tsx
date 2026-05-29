@@ -53,13 +53,13 @@ export function PerformanceChart() {
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 700 }}
-              tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
+              tickFormatter={(value: any) => `${(value / 1000000).toFixed(0)}M`}
               dx={-10}
             />
             <Tooltip 
               contentStyle={{ backgroundColor: '#141618', borderColor: '#334155', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}
               itemStyle={{ color: '#f8fafc' }}
-              formatter={(value: number) => [`${(value / 1000000).toFixed(2)}M DZD`, '']}
+              formatter={(value: any) => [`${(value / 1000000).toFixed(2)}M DZD`, '']}
             />
             <Area type="monotone" dataKey="pipeline" stroke="#94a3b8" fillOpacity={1} fill="url(#colorPipeline)" strokeWidth={2} />
             <Area type="monotone" dataKey="revenue" stroke="#10b981" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={2} />

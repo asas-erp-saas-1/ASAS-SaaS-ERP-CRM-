@@ -1,4 +1,5 @@
 import { ErrorTracker } from '../observability/errors';
+import { prisma } from '../db/prisma';
 
 export class RuntimeGuard {
   static assertKernelExecution() {
@@ -20,6 +21,19 @@ export class RuntimeGuard {
   static triggerViolation(reason: string) {
     ErrorTracker.captureRejection(reason);
     console.error(`[EEL: FATAL] ${reason}`);
+    
+    try {
+      // Async fire and forget audit log on critical violation
+      prisma.auditLog.create({
+        data: {
+          tenantId: 'SYSTEM',
+          action: 'BOUNDARY_VIOLATION',
+          resource: 'KERNEL',
+          details: { reason }
+        }
+      }).catch(() => {});
+    } catch (_) {}
+
     throw new Error(`ENFORCEMENT_VIOLATION: ${reason}`);
   }
 }

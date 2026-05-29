@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { kernel } from '@/lib/kernel/core';
+import { requirePermission, AuthorizationError } from '@/lib/auth/gates';
+import { ErrorTracker } from '@/lib/observability/errors';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
+    await requirePermission('CLIENTS', 'READ');
+
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
@@ -17,14 +21,19 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ data: clients, count: clients.length });
   } catch (error: any) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    ErrorTracker.captureError(error, { context: 'GET /api/clients' });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const identity = await requirePermission('CLIENTS', 'CREATE');
+
     const body = await request.json();
-    const identity = await kernel.identity();
     
     // Minimal validation
     if (!body.full_name) {
@@ -42,6 +51,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: client });
   } catch (error: any) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    ErrorTracker.captureError(error, { context: 'POST /api/clients' });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

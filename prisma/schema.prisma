@@ -1,0 +1,208 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+  PENDING_PASSWORD_RESET
+}
+
+enum SubscriptionTier {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+// -----------------------------------------------------------------------------
+// CORE TENANT & ORGANIZATION MODELS
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id               String           @id @default(uuid())
+  name             String           @db.VarChar(255)
+  slug             String           @unique @db.VarChar(100)
+  status           TenantStatus     @default(ACTIVE)
+  subscriptionTier SubscriptionTier @default(STARTER)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users     User[]
+  roles     Role[]
+  auditLogs AuditLog[]
+  sessions  Session[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String
+  email        String     @db.VarChar(255)
+  passwordHash String     @db.VarChar(255)
+  firstName    String     @db.VarChar(100)
+  lastName     String     @db.VarChar(100)
+  status       UserStatus @default(ACTIVE)
+
+  failedAppts Int       @default(0)
+  lastLoginAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  userRoles UserRole[]
+
+  // SaaS Multi-tenant compound index
+  @@unique([tenantId, email], name: "tenant_email_unique")
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+// RBAC ENGINE
+// -----------------------------------------------------------------------------
+
+model Role {
+  id          String  @id @default(uuid())
+  tenantId    String
+  name        String  @db.VarChar(100) // e.g. "Admin", "Agent", "Manager"
+  description String? @db.Text
+  isSystem    Boolean @default(false) // System roles cannot be deleted
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  resource    String  @db.VarChar(100) // e.g. "DEALS", "LEADS", "USERS"
+  action      String  @db.VarChar(50) // e.g. "CREATE", "READ", "UPDATE", "DELETE", "MANAGE"
+  description String? @db.Text
+
+  roles RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// -----------------------------------------------------------------------------
+// SECURITY & SESSIONS
+// -----------------------------------------------------------------------------
+
+model Session {
+  id         String  @id @default(uuid())
+  userId     String
+  tenantId   String
+  isValid    Boolean @default(true)
+  deviceInfo String? @db.Text
+  ipAddress  String? @db.VarChar(45)
+
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id         String  @id @default(uuid())
+  sessionId  String
+  tokenHash  String  @unique @db.VarChar(512)
+  isRevoked  Boolean @default(false)
+  
+  // Track chain for Replay Detection
+  replacedBy String? @db.VarChar(512)
+  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     String  @db.VarChar(100)
+  resource   String  @db.VarChar(100)
+  resourceId String? @db.VarChar(100)
+  details    Json?
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, resource])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@map("audit_logs")
+}

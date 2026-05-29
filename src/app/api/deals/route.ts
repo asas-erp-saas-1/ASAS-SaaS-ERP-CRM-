@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 import { DealService } from '@/services/deals/deal.service';
 import { ErrorTracker } from '@/lib/observability/errors';
 import { parseAndValidate, dealSchema, ValidationError } from '@/lib/validators';
+import { requirePermission, AuthorizationError } from '@/lib/auth/gates';
 
 export async function GET(request: Request) {
   try {
+    await requirePermission('DEALS', 'READ');
+
     const { searchParams } = new URL(request.url);
     const limit = Number(searchParams.get('limit')) || 25;
     const id = searchParams.get('id');
@@ -18,6 +21,9 @@ export async function GET(request: Request) {
     
     return NextResponse.json({ data: deals, count: deals.length });
   } catch (error: any) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     ErrorTracker.captureError(error, { context: 'GET /api/deals' });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -25,6 +31,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await requirePermission('DEALS', 'CREATE');
+
     const body = await request.json();
     
     const validatedData = parseAndValidate(dealSchema, body, 'Deal Create');
@@ -37,6 +45,9 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ data: deal });
   } catch (error: any) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     ErrorTracker.captureError(error, { context: 'POST /api/deals' });
     if (error instanceof ValidationError) {
       return NextResponse.json({ error: error.message, details: error.field }, { status: 400 });

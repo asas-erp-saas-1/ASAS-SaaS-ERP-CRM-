@@ -1,46 +1,33 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import { SessionService } from '@/lib/auth/session';
+import { CookieService } from '@/lib/auth/cookie';
+import { kernel } from '@/lib/kernel/core';
 
 export async function POST(request: Request) {
-  const requestUrl = new URL(request.url)
-  const cookieStore = await cookies()
+  const requestUrl = new URL(request.url);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-
-  if (supabaseUrl === 'https://placeholder.supabase.co') {
-    return NextResponse.redirect(new URL('/login', requestUrl.origin), {
-      status: 303,
-    })
-  }
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseKey,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          } catch (error) {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
+  try {
+    // Try to get identity to revoke the exact session or all
+    try {
+      const identity = await kernel.identity();
+      if (identity && identity.sessionId) {
+        await SessionService.revokeSession(identity.sessionId);
+      }
+    } catch (e) {
+      // If we can't get identity, that means token is expired/invalid anyway
     }
-  )
 
-  await supabase.auth.signOut()
+    // Always clear cookies
+    await CookieService.clearTokens();
 
-  return NextResponse.redirect(new URL('/login', requestUrl.origin), {
-    status: 303, // Use 303 See Other to ensure redirection to GET on /login
-  })
+    return NextResponse.redirect(new URL('/login', requestUrl.origin), {
+      status: 303, // Use 303 See Other to ensure redirection to GET on /login
+    });
+  } catch (error) {
+     await CookieService.clearTokens();
+     return NextResponse.redirect(new URL('/login', requestUrl.origin), {
+      status: 303,
+    });
+  }
 }
+

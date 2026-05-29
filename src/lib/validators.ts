@@ -19,7 +19,8 @@ export function parseAndValidate<T>(schema: z.ZodSchema<T>, data: unknown, conte
     return schema.parse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0];
+      const zErr = error as z.ZodError<any>;
+      const firstError = zErr.issues[0];
       if (!firstError) throw error;
       throw new ValidationError(
         `${contextName ? contextName + ': ' : ''}${firstError.message}`,

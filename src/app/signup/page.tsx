@@ -1,11 +1,11 @@
 'use client';
 import { useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { Building2, ArrowRight } from 'lucide-react';
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('');
+  const [tenantName, setTenantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -14,47 +14,39 @@ export default function SignupPage() {
 
   const router = useRouter();
 
-  const getSupabase = () => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-    return { supabase: createBrowserClient(supabaseUrl, supabaseKey), isMock: supabaseUrl === 'https://placeholder.supabase.co' };
-  };
-
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { supabase, isMock } = getSupabase();
+    const [firstName, ...rest] = fullName.split(' ');
+    const lastName = rest.join(' ') || 'User';
 
-    if (isMock) {
-      setTimeout(() => {
-        setSuccess(true);
-      }, 1000);
-      return;
-    }
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: firstName || 'Admin',
+          lastName,
+          email,
+          password,
+          tenantName: tenantName || 'My Agency'
+        })
+      });
 
-    // Register user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName
-        }
+      const body = await res.json();
+
+      if (!res.ok) {
+        setError(body.error || 'Failed to create account');
+        setLoading(false);
+        return;
       }
-    });
 
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (authData.user && authData.session) {
-      router.push('/onboarding');
-    } else {
       setSuccess(true);
+      setLoading(false);
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
   };
@@ -63,8 +55,8 @@ export default function SignupPage() {
     return (
       <div className="flex min-h-[100dvh] w-full items-center justify-center bg-white dark:bg-[#141618] text-asas-charcoal dark:text-asas-sand px-4 py-12">
         <div className="w-full max-w-md p-8 border border-gray-200 dark:border-white/5 bg-white dark:bg-[#141618] rounded-sm shadow-2xl text-center">
-            <h2 className="text-2xl font-bold mb-4">Vérifiez votre Email</h2>
-            <p className="text-asas-silver">Un lien de confirmation a été envoyé à <strong>{email}</strong>. Cliquez sur ce lien pour activer votre compte, puis connectez-vous.</p>
+            <h2 className="text-2xl font-bold mb-4">Compte Créé</h2>
+            <p className="text-asas-silver">Votre agence a été configurée avec succès. Vous pouvez maintenant vous connecter.</p>
             <button onClick={() => router.push('/login')} className="mt-8 px-6 py-3 bg-asas-navy text-white rounded-sm font-bold">Retour à la connexion</button>
         </div>
       </div>
@@ -102,6 +94,17 @@ export default function SignupPage() {
             />
           </div>
           <div>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Nom de l'agence (Tenant)</label>
+            <input
+              type="text"
+              required
+              value={tenantName}
+              onChange={(e) => setTenantName(e.target.value)}
+              className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+              placeholder="Mon Agence LLC"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Email Professionnel</label>
             <input
               type="email"
@@ -109,7 +112,7 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
-              placeholder="jean@monagence.com"
+              placeholder="admin@monagence.com"
             />
           </div>
           <div>

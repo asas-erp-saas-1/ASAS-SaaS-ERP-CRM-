@@ -10,6 +10,10 @@ const envSchema = z.object({
   NEXT_PUBLIC_GEMINI_API_KEY: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().default('http://localhost:3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DATABASE_URL: z.string().optional(),
+  JWT_SECRET: z.string().optional(),
+  UPSTASH_REDIS_REST_URL: z.string().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
 const safeUrl = (url: string | undefined | null) => {
@@ -36,6 +40,10 @@ export const env = envSchema.parse({
   NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY || undefined,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   NODE_ENV: process.env.NODE_ENV || 'development',
+  DATABASE_URL: process.env.DATABASE_URL || undefined,
+  JWT_SECRET: process.env.JWT_SECRET || undefined,
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || undefined,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || undefined,
 });
 
 export type Env = z.infer<typeof envSchema>;

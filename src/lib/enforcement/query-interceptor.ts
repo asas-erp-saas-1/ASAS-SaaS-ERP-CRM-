@@ -66,15 +66,31 @@ export class QueryInterceptor {
 
     let scopedData = { ...this.sanitizePayload(data) };
 
-    const tenantColumn = ['subscriptions', 'tenant_usage', 'invoices', 'payments', 'outbox_events', 'pipeline_metrics'].includes(tableName) 
-      ? 'tenant_id' 
-      : 'agency_id';
+    // Legacy migration mapping: Map agency_id to tenantId then remove agency_id
+    if ('agency_id' in scopedData) {
+      scopedData['tenantId'] = scopedData['agency_id'];
+      delete scopedData['agency_id'];
+    }
 
+    // Prevent Nested Prisma Mutations (creates/connects bypass root tenant injection)
+    for (const [key, value] of Object.entries(scopedData)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const hasPrismaOperators = ['create', 'connect', 'update', 'delete', 'set', 'disconnect'].some(op => op in (value as any));
+        if (hasPrismaOperators) {
+          ErrorTracker.captureRejection(`Nested relational mutation attempted on key ${key} in ${tableName}`);
+          throw new Error('NESTED_MUTATION_FORBIDDEN_USE_FLAT_TRANSACTIONS');
+        }
+      }
+    }
+
+    const tenantColumn = ['subscriptions', 'tenant_usage', 'invoices', 'payments', 'outbox_events', 'pipeline_metrics'].includes(tableName) 
+      ? 'tenantId' // mapped prisma tables use camelCase
+      : 'tenantId'; // For users, roles, sessions, all are camelCase tenantId in Prisma, legacy agency_id mapped in SQL maybe but Prisma schema uses tenantId. Wait, let's look at schema.
+
+    // Force correct tenant ownership on creation
     if (action === 'INSERT') {
-      // Force correct tenant ownership on creation
-      scopedData[tenantColumn] = identity.tenantId;
-    } else if (action === 'UPDATE' && scopedData[tenantColumn] && scopedData[tenantColumn] !== identity.tenantId) {
-      // Prevent attempts to move data to another tenant
+      scopedData['tenantId'] = identity.tenantId;
+    } else if (action === 'UPDATE' && scopedData['tenantId'] && scopedData['tenantId'] !== identity.tenantId) {
       RuntimeGuard.triggerViolation('Attempt to mutate cross-tenant boundary detected.');
     }
 

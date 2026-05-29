@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { Building2, ShieldCheck, ArrowRight } from 'lucide-react';
 
@@ -10,96 +9,44 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
+  // Note: Internal auth MFA not implemented in foundation phase
   const [showMfa, setShowMfa] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [factorId, setFactorId] = useState('');
 
   const router = useRouter();
 
-  const getSupabase = () => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-    return { supabase: createBrowserClient(supabaseUrl, supabaseKey), isMock: supabaseUrl === 'https://placeholder.supabase.co' };
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { supabase, isMock } = getSupabase();
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
 
-    if (isMock) {
-      setTimeout(() => {
-        router.push('/dashboard/overview');
-      }, 1000);
-      return;
-    }
+      const body = await res.json();
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Check MFA
-    const { data: mfaData, error: mfaError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (mfaError) {
-      setError(mfaError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (mfaData.nextLevel === 'aal2' && mfaData.currentLevel === 'aal1') {
-      // User has MFA enabled, find a TOTP factor
-      const factors = await supabase.auth.mfa.listFactors();
-      const totpFactor = factors.data?.totp?.[0];
-      if (totpFactor) {
-        setFactorId(totpFactor.id);
-        setShowMfa(true);
-      } else {
-        // Enrolled but no valid factor? (shouldn't happen)
-        router.push('/dashboard/overview');
+      if (!res.ok) {
+        setError(body.error || 'Failed to login');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-      return;
-    }
 
-    router.push('/dashboard/overview');
+      router.push('/dashboard/overview');
+    } catch (err) {
+      setError('An unexpected error occurred during login');
+      setLoading(false);
+    }
   };
 
   const handleMfaChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const { supabase } = getSupabase();
-
-    const challenge = await supabase.auth.mfa.challenge({ factorId });
-    if (challenge.error) {
-      setError(challenge.error.message);
-      setLoading(false);
-      return;
-    }
-
-    const verify = await supabase.auth.mfa.verify({
-      factorId,
-      challengeId: challenge.data.id,
-      code: mfaCode,
-    });
-
-    if (verify.error) {
-      setError(verify.error.message);
-      setLoading(false);
-      return;
-    }
-
-    router.push('/dashboard/overview');
+    // MFA is bypassed in this foundational layer migration.
+    // Kept structure for future implementation.
   };
 
   return (

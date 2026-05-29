@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { jwtVerify } from 'jose';
 
 // This middleware runs on the Vercel Edge Network / Cloudflare Workers
 // It intercepts requests to enforce tenant resolution based on subdomains or headers.
 
 const ALLOWED_ENVIRONMENTS = ['development', 'staging', 'production'];
 const CURRENT_ENV = process.env.NEXT_PUBLIC_APP_ENV || 'development';
+
+const SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'fallback_secret_must_change_for_production_use_123'
+);
 
 export async function middleware(request: NextRequest) {
   // 1. Edge-based multi-region/tenant routing extraction
@@ -44,42 +48,46 @@ export async function middleware(request: NextRequest) {
   const region = request.headers.get('x-vercel-ip-country') || 'global';
   requestHeaders.set('x-client-region', region);
 
+  // Determine auth status securely at edge
+  let isAuthenticated = false;
+  let identityTenant = '';
+
+  const tokenCookie = request.cookies.get('asas_access_token')?.value;
+  const authHeader = request.headers.get('authorization');
+  
+  // Accept standard Bearer headers for API, or Cookies for web
+  let token = tokenCookie;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  }
+
+  if (token) {
+    try {
+      const { payload } = await jwtVerify(token, SECRET);
+      if (payload && payload.userId) {
+        isAuthenticated = true;
+        identityTenant = payload.tenantId as string;
+      }
+    } catch (err) {
+      // invalid token
+    }
+  }
+
+  // 5. Protected Route Guard (Dashboard boundary)
+  if (url.pathname.startsWith('/dashboard')) {
+    if (!isAuthenticated) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    // Optional: enforce URL tenant matches JWT tenant if needed
+  }
+
   let response = NextResponse.next({
     request: {
       headers: requestHeaders,
     },
   });
 
-  // Fallback to placeholder if env vars are missing to prevent crash during development/preview
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet: any[]) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value);
-            response.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
-
-  // Authenticate user securely at edge
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (url.pathname.startsWith('/dashboard') && !user && supabaseUrl !== 'https://placeholder.supabase.co') {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
-  // 5. Global Security Headers Enforcements
+  // 6. Global Security Headers Enforcements
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
