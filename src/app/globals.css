@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-asas-navy: #1B2A4A;
+  --color-asas-gold: #C5A880;
+  --color-asas-sand: #F4EEDF;
+  --color-asas-charcoal: #2A2D34;
+  --color-asas-copper: #B87333;
+  --color-asas-silver: #A9B0B8;
+  --color-asas-emerald: #0A5C36;
+}
+
+body {
+  background-color: var(--color-asas-sand);
+  color: var(--color-asas-charcoal);
+  font-family: var(--font-sans), sans-serif;
+}

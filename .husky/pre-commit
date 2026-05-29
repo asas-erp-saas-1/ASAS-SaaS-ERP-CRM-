@@ -1,0 +1,15 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🛡️ Running Pre-Commit Governance Gates..."
+
+# 1. Ensure TypeScript compilation parity
+npm run enforce:types || { echo '❌ TS Hardening Failed'; exit 1; }
+
+# 2. Check Dependency Rules
+npm run enforce:boundaries || { echo '❌ Dependency Crawler Failed'; exit 1; }
+
+# 3. Check AST Custom Bypasses
+npm run enforce:ast || { echo '❌ Kernel / AST Bypasses Detected'; exit 1; }
+
+echo "✅ Pre-Commit Passed. Architecture Preserved."

@@ -1,0 +1,48 @@
+name: Enterprise Runtime Governance
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  governance:
+    name: AST & Boundary Checking
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Enforce TypeScript Strictness
+        run: npm run enforce:types
+
+      - name: Enforce Dependency Boundaries
+        run: npm run enforce:boundaries
+
+      - name: Enforce AST (Kernel Bypasses)
+        run: npm run enforce:ast
+
+  migration_safety:
+    name: Destructive Migration Blocker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Block Destructive RPC/Table Drops
+        run: |
+          echo "Scanning Supabase Migrations for Destructive Operations..."
+          if grep -iE 'DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE' supabase/migrations/*.sql; then
+            echo "❌ CRITICAL: Destructive operations detected in migrations. Expand-Contract law violated."
+            exit 1
+          fi
+          echo "✅ Migration Safety Passed."

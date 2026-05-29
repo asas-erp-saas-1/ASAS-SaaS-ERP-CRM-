@@ -1,0 +1,84 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  NEXT_TELEMETRY_DISABLED: 1
+  NODE_ENV: production
+
+jobs:
+  validate:
+    name: Validation & Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Code Linting
+        run: npm run lint
+      - name: Type Checking
+        run: npx tsc --noEmit
+      - name: Security Audit
+        run: npm audit --audit-level=high
+
+  test_kernel:
+    name: Kernel Enforcement Tests
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run EEL Tests
+        run: npm run test:kernel
+
+  build:
+    name: Build & Edge Optimization
+    needs: [validate, test_kernel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build Validation Hook
+        run: node scripts/validate-build.js
+      - name: Next.js Build
+        run: npm run build
+      - name: Cache Build Output
+        uses: actions/cache@v4
+        with:
+          path: .next
+          key: ${{ runner.os }}-nextjs-${{ github.sha }}
+
+  deploy_production:
+    name: Deploy to Edge/Serverless
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.asas-os.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Deployment CLI
+        run: npm i -g vercel
+      - name: Deploy to Vercel (Prod)
+        run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
